@@ -1,0 +1,14 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/javascript-node-mongo
+{
+	"name": "Ansible Network",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "ansible",
+	"workspaceFolder": "/workspace",
+	"forwardPorts": [
+		"gns3:3080" //GNS3 Web GUI
+	],
+	"postCreateCommand": "dnf install -y python3-scp ip ifconfig ping nmap telnet sshpass && ip route add $GNS3_NETWORK via $(getent hosts gns3 | awk '{ print $1 }') && pip install pyats chardet genie netports vhelpers && mkdir -p ~/.ansible/collections/ansible_collections/allied_digital && ln -s $(pwd)/Source ~/.ansible/collections/ansible_collections/allied_digital/ciscoupgrade"
+// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+// "remoteUser": "root"
+}

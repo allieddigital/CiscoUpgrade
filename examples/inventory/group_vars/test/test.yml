@@ -1,0 +1,6 @@
+---
+ansible_user: admin
+ansible_ssh_password: admin
+ios_version: 17.12.04a
+ios_image: c8000v-universalk9.17.12.04a.SPA.bin
+local_image_dir: ${ playbook_dir }/images

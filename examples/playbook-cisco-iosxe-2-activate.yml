@@ -1,0 +1,7 @@
+---
+- name: Cisco IOS Install Activate
+  hosts: test
+  tasks:
+  roles:
+    - name: Activate IOS-XE
+      role: allied_digital.ciscoupgrade.activate

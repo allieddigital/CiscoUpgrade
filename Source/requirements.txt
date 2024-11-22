@@ -1,0 +1,8 @@
+#cisco.ios not explicitly called out
+pyats
+chardet
+genie
+scp
+#allied_digital.ciscoupgrade
+netports #For IOS cisco version comparison
+vhelpers #Undeclared netports dependency

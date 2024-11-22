@@ -1,0 +1,23 @@
+- name: Gather pre-upgrade facts
+  cisco.ios.ios_facts:
+    gather_subset: min
+- name: Check for uncommitted packages
+  cisco.ios.ios_command:
+    commands:
+      - show install uncommitted
+  register: uncommitted_output
+- name: Commit the upgrade
+  when: uncommitted_output.stdout is not search('No uncommitted packages')
+  block:
+    - name: Commit the upgrade
+      cisco.ios.ios_command:
+        commands:
+          - install commit
+      register: commit_output
+    - name: Verify commit was successful
+      ansible.builtin.assert:
+        that: "'SUCCESS: install_commit' in commit_output.stdout[0]"
+        fail_msg: |
+          Commit Failed: {{ commit_output.stdout | default('No output') }}
+        success_msg: |
+          Commit Successful: {{ commit_output.stdout }}

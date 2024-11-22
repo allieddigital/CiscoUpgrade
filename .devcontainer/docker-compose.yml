@@ -1,0 +1,32 @@
+# Settings
+# NETWORK - Specify the network address for the GNS3 devices where they can be reached by ansible
+# NETWORK_GATEWAY - Specify the gateway address to the GNS3 host.
+services:
+  ansible:
+    image: ghcr.io/ansible/community-ansible-dev-tools:v25.5.1
+    user: root
+    privileged: true
+    command: sleep infinity
+    environment:
+      GNS3_NETWORK: ${NETWORK:-172.21.1.0/24}
+
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    # network_mode: service:gns3
+    volumes:
+      #Devcontainer entry point
+      - ..:/workspace:cached
+
+  gns3:
+    image: ghcr.io/justingrote/gns3:latest
+    restart: unless-stopped
+    privileged: true
+    environment:
+      BRIDGE_ADDRESS: ${NETWORK_GATEWAY:-172.21.1.1/24}
+    sysctls:
+      net.ipv4.ip_forward: 1 #Enable IP forwarding for ansible to reach GNS3
+    volumes:
+      - gns3-data:/data # GNS3 Projects and data dir stored here
+
+
+volumes:
+  gns3-data:

@@ -1,0 +1,186 @@
+- name: Gather IOS facts
+  cisco.ios.ios_facts:
+    gather_subset:
+      - min
+      - hardware # Used for filesystem comparison
+
+- name: Stop playbook if no upgrade is needed
+  ansible.builtin.meta: end_play
+  when: ios_version is allied_digital.ciscoupgrade.swversion_greaterthan(ansible_net_version)
+
+- name: Check the startup-config against the running-config and backup if changed
+  cisco.ios.ios_config:
+    diff_against: startup
+    diff_ignore_lines:
+      - "certificate (ca|self-signed).*"
+      - "([0-9A-F]{2,}(?:\\s[0-9A-F]{2,})*)" # Certificate hex lines
+      - "switchport"
+      - "stackwise-virtual link 1"
+      - "quit"
+  notify: running_config_changed
+
+- name: Check for presence of suggested IOS image on disk
+  ansible.builtin.stat:
+    path: /srv/ansible/ios/{{ ios_image }}
+
+- name: Get information about the IOS image to install
+  ansible.builtin.stat:
+    path: "{{ local_image_dir }}/{{ ios_image }}"
+    get_checksum: "{{ ios_image_checksum is defined }}"
+    checksum_algorithm: md5
+  register: ios_local_image_info
+
+- name: Check the candidate image exists
+  ansible.builtin.assert:
+    that: ios_local_image_info.stat.exists
+    fail_msg: Local image does not exist
+
+- name: Check the candidate image checksum matches the expected checksum
+  when: ios_image_checksum is defined
+  ansible.builtin.assert:
+    that: ios_local_image_info.stat.checksum == ios_image_checksum
+    fail_msg: Local image checksum does not match expected checksum. Ensure the image was downloaded correctly and the specified checksum is correct.
+
+- name: Select the destination IOS filesystem
+  ansible.builtin.set_fact:
+    ios_flash_dir: |-
+      {{
+        ios_filesystem
+        | default(
+          ansible_net_filesystems
+          | select('search', 'flash')
+          | first
+        )
+      }}
+  failed_when: ios_flash_dir is not defined
+
+- name: Define the fully qualified remote image path
+  ansible.builtin.set_fact:
+    ios_remote_image: "{{ ios_flash_dir + '/' + ios_image }}"
+
+- name: Get candidate IOS image information on device, if present
+  ansible.utils.cli_parse:
+    command: dir {{ ios_remote_image }}
+    parser:
+      name: ansible.netcommon.pyats
+  register: ios_remote_image_info
+  # This command can "fail" if image is not present but we still want the output, hence this setup
+  failed_when: false
+
+- name: Check that the image exists and has a matching file size
+  ansible.builtin.set_fact:
+    ios_image_present: "{{ ios_remote_image_info.parsed is defined and ios_remote_image in ios_remote_image_info.parsed.dir }}"
+
+- name: Check that the image file sizes match if it exists
+  when: ios_image_present
+  ansible.builtin.assert:
+    that: ios_remote_image_info.parsed.dir[ios_remote_image].files[ios_image].size | int == ios_local_image_info.stat.size
+    fail_msg: Remote image size does not match local image size. Remove the image so that it can be re-copied.
+# This command can "fail" if image is not present but we still want the output, hence this setup
+# of run -> parse rather than just using cli_parse with command
+# because cli_parse will not parse a failed IOS command as far as I know.
+
+- name: Run Verify IOS Image Checksum [Long Running Operation - 2min+]
+  when: ios_image_checksum is defined and ios_image_present
+  block:
+    - name: Run verify command
+      failed_when: false
+      cisco.ios.ios_command:
+        commands: verify /md5 {{ ios_image }} {{ ios_image_checksum }}
+        retries: 0
+      vars:
+        ansible_command_timeout: 600
+      register: ios_verify_output
+
+    - name: Parse IOS Image Verification Command
+      ansible.utils.cli_parse:
+        # Failures such as file not found are in msg, normal output is in stdout_lines
+        text: "{{ ios_verify_output.stdout[0] | default(ios_verify_output.msg) }}"
+        parser:
+          name: ansible.netcommon.native
+          command: verify
+      register: ios_verify
+      failed_when: "not ios_verify.parsed.present is defined"
+
+    - name: Fail if the candidate image is present but the checksum doesn't match
+      when: ios_verify.parsed.present is true
+      ansible.builtin.assert:
+        that: ios_verify.parsed.checksum == ios_image_checksum
+        fail_msg: >-
+          {{ ios_image }} is on the switch but the checksum does not match expected checksum.
+          This indicates it was not copied correctly.
+          Please delete it and retry.
+
+- name: Copy the candidate IOS image to the switch if not present
+  when: ios_image_present is false
+  block:
+    - name: Calculate Filesystem Free Space
+      ansible.builtin.set_fact:
+        ios_free_space: "{{ ansible_net_filesystems_info[ios_flash_dir].spacefree_kb * 1024 }}"
+    - name: Check sufficient free space exists to copy image
+      ansible.builtin.assert:
+        that: ios_free_space | int >= ios_local_image_info.stat.size
+        fail_msg: Not enough free memory to copy the image. Please free up space and try again.
+    - name: Check if SCP server is enabled in running config (startup config doesnt matter here)
+      cisco.ios.ios_command:
+        commands: show running-config | include ^ip scp server enable
+      register: scp_server_running
+    - name: Temporarily enable SCP Server on the switch if not already enabled
+      cisco.ios.ios_config:
+        lines:
+          - ip scp server enable
+          - ip tcp window-size 131072
+          - ip ssh window-size 131072
+          - ip ssh bulk-mode 1073741824
+      when: scp_server_running.stdout[0] == ""
+    - name: Copy IOS Image to the switch [Long Running Operation - 5min+]
+      vars:
+        ansible_command_timeout: 7200
+      ansible.netcommon.net_put:
+        src: "{{ local_image_dir }}/{{ ios_image }}"
+        dest: "{{ ios_remote_image }}"
+        protocol: scp
+        overwrite: true
+    - name: Check if SCP server is enabled in startup config
+      cisco.ios.ios_command:
+        commands: show startup-config | include ^ip scp server enable
+      register: scp_server_startup
+    - name: Remove temporary SCP Server from the switch if not in startup config
+      cisco.ios.ios_config:
+        lines:
+          - no ip scp server enable
+          - no ip tcp window-size
+          - no ip tcp window-size 131072
+          - no ip ssh window-size 131072
+          - no ip ssh bulk-mode 1073741824
+      when: scp_server_startup.stdout[0] == ""
+
+# Save the running config as the next step will fail if the running config is not saved
+- name: Save running to startup when modified before adding the copied image
+  cisco.ios.ios_config:
+    diff_against: startup
+    save_when: modified
+    # BUG: The ios_config module isn't ignoring certificate differences between running and startup, as well as some other differences
+    # https://github.com/ansible-collections/cisco.ios/issues/637#issuecomment-2286574021
+    diff_ignore_lines:
+      - "certificate (ca|self-signed).*"
+      - "([0-9A-F]{2,}(?:\\s[0-9A-F]{2,})*)" # Certificate hex lines
+      - "switchport"
+      - "stackwise-virtual link 1"
+      - "quit"
+
+# This operation is idempotent. If it fails stating the file has already been staged we consider that a success.
+- name: Install IOS Bundle from copied file [Long Running Operation - 1min+]
+  vars:
+    ansible_command_timeout: 600 # This can sometimes take longer than the default 30 seconds
+  ansible.utils.cli_parse:
+    command: install add file {{ flash_dir }}{{ ios_image }}
+    parser:
+      name: ansible.netcommon.native
+      command: install add file
+  # Handles a situation where the images were already installed
+  register: ios_install_result
+  failed_when:
+    - ios_install_result.parsed.success is not true
+  changed_when:
+    - ios_install_result.parsed.installed is true

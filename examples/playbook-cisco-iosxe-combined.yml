@@ -1,0 +1,16 @@
+---
+- name: Stage Cisco IOS-XE to desired version
+  hosts: test
+  gather_facts: false
+  connection: network_cli
+  vars:
+    ansible_network_os: cisco.ios.ios
+    local_image_dir: ${playbook_dir}/images
+
+  roles:
+    - name: Stage IOS-XE
+      role: allied_digital.ciscoupgrade.stage
+    - name: Activate IOS-XE
+      role: allied_digital.ciscoupgrade.activate
+    - name: Activate IOS-XE
+      role: allied_digital.ciscoupgrade.commit

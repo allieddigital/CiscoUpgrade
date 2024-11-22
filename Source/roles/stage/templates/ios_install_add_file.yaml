@@ -1,0 +1,13 @@
+# In this case the image is already staged so this is a success
+- getval: 'FAILED: install_add : Super package already added'
+  result:
+    success: true
+
+- getval: '^FAILED: install_add'
+  result:
+    success: false
+
+- getval: '^SUCCESS: install_add'
+  result:
+    success: true
+    installed: true

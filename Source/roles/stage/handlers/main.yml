@@ -1,0 +1,7 @@
+- name: Backup the running-config if changed
+  listen: running_config_changed
+  cisco.ios.ios_config:
+    backup: true
+    backup_options:
+      dir_path: "{{ config_backup_dir }}"
+      filename: "{{ ansible_net_hostname }}-{{ ansible_date_time.date }}.cfg"

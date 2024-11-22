@@ -1,0 +1,52 @@
+- name: Check for inactive packages
+  cisco.ios.ios_command:
+    commands:
+      - show install inactive
+  register: inactive_summary_output
+
+- name: Activate new packages [Downtime starts after this is completed]
+  when: inactive_summary_output.stdout[0] is not search("No Inactive Packages")
+  block:
+    - name: Save Running Config if Changed
+      cisco.ios.ios_config:
+        save_when: modified
+    - name: Activate Installed Image
+      cisco.ios.ios_command:
+        commands:
+          - install activate prompt-level none
+        retries: 0
+      vars:
+        ansible_command_timeout: 3600
+      register: activate_output
+      changed_when: |-
+        "SUCCESS: install_activate" in activate_output.stdout[0]
+
+    # HACK: Match with ios_command hides the output if it fails, so we need this separate
+    - name: Verify activation was successful
+      ansible.builtin.assert:
+        that: |-
+          "SUCCESS: install_activate" in activate_output.stdout[0] or
+          "Cannot perform activate operation as previous installation is pending commit" in activate_output.stdout[0]
+        fail_msg: |
+          Activation Failed: {{ activate_output.stdout[0] | default('No output') }}
+        success_msg: Activation was successful or previous installation is pending commit
+
+    - name: Wait for switch to reload and become reachable again [Downtime Begins]
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        sleep: 10
+        timeout: 3600
+
+- name: Gather post-upgrade facts [Downtime Ends]
+  cisco.ios.ios_facts:
+    gather_subset: min
+
+- name: Check that switch version matches the intended version
+  ansible.builtin.assert:
+    that:
+      - ansible_net_version is allied_digital.ciscoupgrade.swversion_equalto(ios_version)
+    fail_msg: >-
+      Upgrade Failed: Installed {{ ansible_net_version }} != Expected {{ ios_version }}
+      \nDid you stage the correct image?
+    success_msg: >-
+      Device is running the expected version: {{ ansible_net_version }}

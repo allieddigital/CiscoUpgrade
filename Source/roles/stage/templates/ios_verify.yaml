@@ -1,0 +1,17 @@
+---
+- example: Error computing MD5 hash bootflash:cat9k_iosxe.17.12.04.SPA.bin (No such file or directory)
+  getval: .+No such file or directory.+
+  result:
+    present: false
+
+- example: Error computing MD5 hash bootflash:cat9k_iosxe.17.12.04.SPA.bin (Permission denied)
+  getval: .+Permission denied.+
+  result:
+    present: false
+
+- example: "verify /md5 (bootflash:dope_hist) = d41d8cd98f00b204e9800998ecf8427e"
+  getval: Verified \(.+?\) = (?P<checksum>\w+)$
+  result:
+    present: true
+    checksum: "{{ checksum }}"
+    verified: true

@@ -1,0 +1,36 @@
+---
+argument_specs:
+  main:
+    author: 'Justin Grote [Twitter: @JustinWGrote] [Bluesky:@posh.guru] [GitHub: JustinGrote]'
+    short_description: Performs first of the three-step IOS-XE install mode process
+    description:
+      - This role performs the first of the three-step IOS-XE install mode process on the target host
+      - This role checks the current IOS version and compares it to the desired version. If the current version is less than the desired version, the role will check if the desired IOS image is present on the switch.
+      - If the image is present, the role will check the checksum of the image. If the checksum matches the expected checksum, the role will verify the image.
+      - If the image is verified, the role will proceed to the next step in the upgrade process. If the image is not present, the role will fail and the upgrade process will not proceed.
+    options:
+      ios_image_dir:
+        description: 'Directory on the Ansible controller where the IOS image file is stored. Example: /srv/ansible/images. Default: images folder in playbook directory'
+        type: str
+        default: images
+      ios_image:
+        description: 'Full name of the IOS software image file to be installed. Must be present on filesystem. Example: c8000v-universalk9.17.06.05.SPA.bin'
+        type: str
+        required: true
+      ios_version:
+        description: 'Target IOS version number to upgrade to. Example: 17.06.05. If not specified, will try to autodetect from the IOS image name first, then its binary content'
+        type: str
+        required: false
+      ios_image_checksum:
+        description: 'MD5 checksum of the IOS image file for verification. Example: a1b2c3d4e5f6g7h8i9j0. If this is not specified, only a simple file presence and size comparison will be performed'
+        type: str
+      ios_filesystem:
+        description: 'Filesystem to check for the IOS image. Example: bootflash:. If this is not specified, will attempt to autodetect the bootflash/flash filesystem'
+        type: str
+        required: false
+      config_backup_dir:
+        description: >-
+          Directory on the switch where the running-config will be backed up. Example: /srv/ansible/configbackup.
+          Directory must already exist. Default is config-backup folder in playbook directory'
+        type: str
+        default: config-backup

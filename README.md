@@ -47,6 +47,34 @@ The three stage process is intended to be done as follows:
 2. *Activate*: Enable the staged image and reboot to run on it. This is where downtime happens as the switch is rebooted.
 3. *Commit*: After activation, the switch will automatically revert to the old image if it crashes or is not committed after two hours. This is useful in the event the upgrade is being done remotely and the device becomes unresponsive. After you verify things are working as expected, run the commit playbook to persist the new image.
 
+
+## Building the Execution Environment
+
+To run playbooks in a containerized environment with all dependencies, you can build an Ansible Execution Environment (EE) using [Ansible Builder](https://ansible.readthedocs.io/projects/builder/).
+
+1. Ensure `ansible-builder` is installed:
+   ```sh
+   pip install ansible-builder
+   ```
+
+2. Build the execution environment image:
+   ```sh
+   ansible-builder build -v 3 -t ansible-ee-ciscoupgrade
+   ```
+
+   This uses the `execution-environment.yml` file in the repository root. Adjust as needed for your requirements.
+
+3. Run playbooks using the built EE image:
+   ```sh
+   ansible-navigator run <playbook.yml> --eei ansible-ee-ciscoupgrade
+   ```
+
+## License
+This repository's configuration code is redistributed under the [MIT License](LICENSE).
+
+If you build an execution environment using this process, the OS and that execution environment must follows the terms of the Red Hat Automation Platform license agreement. It is for this reason we do not publish a compiled execution environment Containerfile in any registries.
+
+
 ### Usage Example
 Here is the output of upgrading 2 Cisco 8000V 17.6.3a to 17.12.04a, with one switch already at 17.12.04a to demonstrate the idempotency of the process.
 
@@ -430,31 +458,3 @@ switch2                    : ok=30   changed=6    unreachable=0    failed=0    s
 switch3                    : ok=24   changed=3    unreachable=0    failed=0    skipped=11   rescued=0    ignored=0   
 ```
 </details>
-
-## Building the Execution Environment
-
-To run playbooks in a containerized environment with all dependencies, you can build an Ansible Execution Environment (EE) using [Ansible Builder](https://ansible.readthedocs.io/projects/builder/).
-
-1. Ensure `ansible-builder` is installed:
-   ```sh
-   pip install ansible-builder
-   ```
-
-2. Build the execution environment image:
-   ```sh
-   ansible-builder build -v 3 -t ansible-ee-ciscoupgrade
-   ```
-
-   This uses the `execution-environment.yml` file in the repository root. Adjust as needed for your requirements.
-
-3. Run playbooks using the built EE image:
-   ```sh
-   ansible-navigator run <playbook.yml> --eei ansible-ee-ciscoupgrade
-   ```
-
-## License
-This repository's configuration code is redistributed under the [MIT License](LICENSE).
-
-The 
-
-If you build an execution environment using this process, the OS and that execution environment must follows the terms of the Red Hat Automation Platform license agreement. It is for this reason we do not publish a compiled execution environment Containerfile in any registries.

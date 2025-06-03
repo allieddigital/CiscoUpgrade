@@ -57,11 +57,15 @@ To run playbooks in a containerized environment with all dependencies, you can b
    pip install ansible-builder
    ```
 
-2. Build the execution environment image:
+1. Build the execution environment image:
    ```sh
    ansible-builder build -v 3 -t ansible-ee-ciscoupgrade
    ```
-
+   
+   NOTE: To build for Ansible Automation Platform, specify the alternate base image  
+   ```sh
+   ansible-builder build -v 3 --build-arg EE_BASE_IMAGE="registry.redhat.io/ansible-automation-platform-25/ee-minimal-rhel9:1.0" -t ansible-ee-ciscoupgrade-rhel9
+   ```
    This uses the `execution-environment.yml` file in the repository root. Adjust as needed for your requirements.
 
 3. Run playbooks using the built EE image:

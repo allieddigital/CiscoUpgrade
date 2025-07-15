@@ -1,8 +1,3 @@
-# In this case the image is already staged so this is a success
-- getval: 'FAILED: install_add : Super package already added'
-  result:
-    success: true
-
 - getval: '^FAILED: install_add'
   result:
     success: false
@@ -10,4 +5,17 @@
 - getval: '^SUCCESS: install_add'
   result:
     success: true
+    present: true
     installed: true
+
+# In this case the image is already staged so this should be a success despite the failed statement above
+- getval: 'FAILED: install_add : Super package already added'
+  result:
+    success: true
+    present: true
+
+# Variant for stacked switches. This will show failed as the final result so this must come after the determination above
+- getval: '[1] Switch 1 FAILED: Super package already added.'
+  result:
+    success: true
+    present: true

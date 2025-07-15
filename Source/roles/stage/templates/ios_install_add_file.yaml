@@ -1,5 +1,4 @@
-
-
+---
 # - getval: '^SUCCESS: install_add'
 #   result:
 #     success: true
@@ -7,7 +6,7 @@
 #     installed: true
 
 # In this case the image is already staged so this should be a success despite the failed statement above
-- getval: '.+Super package already added.+'
+- getval: 'Super package already added'
   result:
     success: true
     present: true

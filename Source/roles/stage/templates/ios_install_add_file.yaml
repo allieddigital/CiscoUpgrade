@@ -1,6 +1,4 @@
-- getval: '^FAILED: install_add'
-  result:
-    success: false
+
 
 # - getval: '^SUCCESS: install_add'
 #   result:
@@ -14,5 +12,7 @@
     success: true
     present: true
 
-
+- getval: '^FAILED: install_add'
+  result:
+    success: false
 

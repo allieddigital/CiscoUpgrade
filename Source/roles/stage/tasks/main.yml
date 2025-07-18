@@ -181,6 +181,6 @@
   # Handles a situation where the images were already installed
   register: ios_install_result
   failed_when:
-    - ios_install_result.parsed.success is not true
+    - ios_install_result.parsed.success is not true and ios_install_result.parsed.present is not true
   changed_when:
-    - ios_install_result.parsed.installed is true
+    - ios_install_result.parsed.present is true

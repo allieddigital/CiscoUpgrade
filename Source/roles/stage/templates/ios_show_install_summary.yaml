@@ -1,0 +1,5 @@
+---
+- example: IMG   C    17.06.03a.0.3
+  getval: IMG\s+(?P<state>[A-Z])\s+(?P<version>\d+\.\d+\.\d+\w)
+  result:
+    "{{ version }}": "{{ state }}"

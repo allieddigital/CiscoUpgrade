@@ -4,9 +4,77 @@
       - min
       - hardware # Used for filesystem comparison
 
+- name: Check for presence of candidate IOS image on disk
+  ansible.builtin.stat:
+    path: "{{ local_image_dir }}/{{ ios_image }}"
+    get_checksum: "{{ ios_image_checksum is defined }}"
+    checksum_algorithm: md5
+  register: ios_local_image_info
+  failed_when: ios_local_image_info.stat.exists == false
+
+- name: Check the candidate image checksum matches the expected checksum
+  when: ios_image_checksum is defined
+  ansible.builtin.assert:
+    that: ios_local_image_info.stat.checksum == ios_image_checksum
+    fail_msg: Local image checksum does not match expected checksum. Ensure the image was downloaded correctly and the specified checksum is correct.
+
+- name: If ios_version is not defined, extract it from the image filename
+  when: ios_version is not defined
+  ansible.builtin.set_fact:
+    ios_version: >-
+      {{ ios_image | regex_search('([0-9]+\.[0-9]+\.[0-9]+[a-z]?)(?=\.\w+\.bin$)', '\1') | first }}
+
+- name: Fetch ios_version from image contents if not found in filename
+  when: ios_version is not defined
+  ansible.builtin.command:
+    cmd: >
+      grep -Poam 1 '(?<=CW_VERSION=\$)(\d+\.\d+\.\d+\w+?)(?=\$)' {{ local_image_dir }}/{{ ios_image }}
+  register: ios_version_grep
+  changed_when: false
+  failed_when: ios_version_grep.rc != 0 and ios_version is not defined
+
+- name: Set ios_version from image contents
+  when: ios_version is not defined and ios_version_grep.stdout != ""
+  ansible.builtin.set_fact:
+    ios_version: "{{ ios_version_grep.stdout }}"
+  failed_when: ios_version is not defined
+
 - name: Stop playbook if no upgrade is needed
   ansible.builtin.meta: end_play
-  when: ios_version is allied_digital.ciscoupgrade.swversion_greaterthan(ansible_net_version)
+  when: ios_version is allied_digital.ciscoupgrade.swversion_greaterthanorequal(ansible_net_version)
+
+- name: Check if the image is already staged
+  ansible.utils.cli_parse:
+    command: show install summary
+    parser:
+      name: ansible.netcommon.native
+  register: installed_images
+
+- name: Stop playbook if the image is already staged
+  ansible.builtin.meta: end_play
+  when: >
+    installed_images.parsed is defined and
+    installed_images.parsed
+    | dict2items
+    | selectattr('value', 'equalto', 'I')
+    | map(attribute='key')
+    | select('allied_digital.ciscoupgrade.swversion_equalto', ios_version)
+    | list
+    | length > 0
+
+- name: Fail playbook if there is a staged image that doesnt match the desired version
+  ansible.builtin.assert:
+    that: >
+      installed_images.parsed is not defined or
+      installed_images.parsed
+      | dict2items
+      | selectattr('value', 'equalto', 'I')
+      | selectattr('key', 'defined')
+      | map(attribute='key')
+      | reject('allied_digital.ciscoupgrade.swversion_equalto', ios_version)
+      | list
+      | length == 0
+    fail_msg: There is a staged image that does not match the desired version. Please remove it with install remove inactive before proceeding.
 
 - name: Check the startup-config against the running-config and backup if changed
   cisco.ios.ios_config:
@@ -18,28 +86,6 @@
       - "stackwise-virtual link 1"
       - "quit"
   notify: running_config_changed
-
-- name: Check for presence of suggested IOS image on disk
-  ansible.builtin.stat:
-    path: /srv/ansible/ios/{{ ios_image }}
-
-- name: Get information about the IOS image to install
-  ansible.builtin.stat:
-    path: "{{ local_image_dir }}/{{ ios_image }}"
-    get_checksum: "{{ ios_image_checksum is defined }}"
-    checksum_algorithm: md5
-  register: ios_local_image_info
-
-- name: Check the candidate image exists
-  ansible.builtin.assert:
-    that: ios_local_image_info.stat.exists
-    fail_msg: Local image does not exist
-
-- name: Check the candidate image checksum matches the expected checksum
-  when: ios_image_checksum is defined
-  ansible.builtin.assert:
-    that: ios_local_image_info.stat.checksum == ios_image_checksum
-    fail_msg: Local image checksum does not match expected checksum. Ensure the image was downloaded correctly and the specified checksum is correct.
 
 - name: Select the destination IOS filesystem
   ansible.builtin.set_fact:
@@ -67,21 +113,31 @@
   # This command can "fail" if image is not present but we still want the output, hence this setup
   failed_when: false
 
-- name: Check that the image exists and has a matching file size
+- name: Check that the image exists and has a file size
   ansible.builtin.set_fact:
-    ios_image_present: "{{ ios_remote_image_info.parsed is defined and ios_remote_image in ios_remote_image_info.parsed.dir }}"
+    ios_image_remote_size: >-
+      {{
+        ios_remote_image_info.parsed is defined
+        and ios_remote_image_info.parsed.dir is defined
+        and ios_remote_image_info.parsed.dir[ios_remote_image] is defined
+        and ios_remote_image_info.parsed.dir[ios_remote_image].files is defined
+        and ios_remote_image_info.parsed.dir[ios_remote_image].files[ios_image] is defined
+        and ios_remote_image_info.parsed.dir[ios_remote_image].files[ios_image].size | int
+        or false
+      }}
 
-- name: Check that the image file sizes match if it exists
-  when: ios_image_present
+# Fast check in lieu of a checksum
+- name: Check that the remote and local image sizes match if the remote image is present
+  when: ios_image_remote_size
   ansible.builtin.assert:
-    that: ios_remote_image_info.parsed.dir[ios_remote_image].files[ios_image].size | int == ios_local_image_info.stat.size
+    that: ios_image_remote_size | int == ios_local_image_info.stat.size
     fail_msg: Remote image size does not match local image size. Remove the image so that it can be re-copied.
 # This command can "fail" if image is not present but we still want the output, hence this setup
 # of run -> parse rather than just using cli_parse with command
 # because cli_parse will not parse a failed IOS command as far as I know.
 
 - name: Run Verify IOS Image Checksum [Long Running Operation - 2min+]
-  when: ios_image_checksum is defined and ios_image_present
+  when: ios_image_checksum is defined and ios_image_remote_size
   block:
     - name: Run verify command
       failed_when: false
@@ -112,7 +168,7 @@
           Please delete it and retry.
 
 - name: Copy the candidate IOS image to the switch if not present
-  when: ios_image_present is false
+  when: ios_image_remote_size is false
   block:
     - name: Calculate Filesystem Free Space
       ansible.builtin.set_fact:
@@ -183,4 +239,4 @@
   failed_when:
     - ios_install_result.parsed.success is not true and ios_install_result.parsed.present is not true
   changed_when:
-    - ios_install_result.parsed.present is true
+    - ios_install_result.parsed.newinstall is true

@@ -1,0 +1,7 @@
+---
+- getval: '^SUCCESS: install_remove'
+  result:
+    success: true
+- getval: '^FAILED: install_remove'
+  result:
+    success: false

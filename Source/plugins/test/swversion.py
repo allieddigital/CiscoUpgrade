@@ -65,24 +65,31 @@ display = Display()
 
 def test_swversion_equal(value, other):
 	try:
-		display.vvv(f"SWVERSION: Comparing versions {value} == {other}")
+		display.vvv(f"SWVERSION: Comparing if {value} == {other}")
 		return SwVersion(value) == SwVersion(other)
 	except Exception as e:
-		raise AnsibleFilterError(f'Error comparing versions {value} and {other}: {e}')
+		raise AnsibleFilterError(f'Error comparing versions {value} === {other}: {e}')
 
 def test_swversion_greater(value, other):
 	try:
-		display.vvv(f"SWVERSION: Comparing versions {value} > {other}")
+		display.vvv(f"SWVERSION: Comparing if {value} > {other}")
 		return SwVersion(other) > SwVersion(value)
 	except Exception as e:
-		raise AnsibleFilterError(f'Error comparing versions {value} and {other}: {e}')
+		raise AnsibleFilterError(f'Error comparing versions {value} > {other}: {e}')
+
+def test_swversion_greater_or_equal(value, other):
+	try:
+		display.vvv(f"SWVERSION: Comparing if {value} >= {other}")
+		return SwVersion(other) >= SwVersion(value)
+	except Exception as e:
+		raise AnsibleFilterError(f'Error comparing versions {value} >= {other}: {e}')
 
 def test_swversion_lesser(value, other):
 	try:
-		display.vvv(f"SWVERSION: Comparing versions {value} < {other}")
+		display.vvv(f"SWVERSION: Comparing if {value} < {other}")
 		return SwVersion(other) < SwVersion(value)
 	except Exception as e:
-		raise AnsibleFilterError(f'Error comparing versions {value} and {other}: {e}')
+		raise AnsibleFilterError(f'Error comparing versions {value} < {other}: {e}')
 
 #Export the functions
 class TestModule(object):
@@ -90,5 +97,6 @@ class TestModule(object):
 		return {
 			'swversion_equalto': test_swversion_equal,
 			'swversion_greaterthan': test_swversion_greater,
+			'swversion_greaterthanorequal': test_swversion_greater_or_equal,
 			'swversion_lesserthan': test_swversion_lesser,
 		}

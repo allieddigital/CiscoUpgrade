@@ -1,2 +1,3 @@
 ---
 # defaults file for allied_digital.ciscoupgrade.stage
+config_backup_dir: {{ playbook_dir + '/config-backup' }}
